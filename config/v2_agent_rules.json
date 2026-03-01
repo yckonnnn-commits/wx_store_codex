@@ -12,7 +12,7 @@
   },
   "style_guard": {
     "standard_min_hanzi": 10,
-    "standard_max_hanzi": 30,
+    "standard_max_hanzi": 45,
     "light_min_hanzi": 8,
     "light_max_hanzi": 45,
     "truncated_tails": ["然后", "所以", "如果", "并且"]

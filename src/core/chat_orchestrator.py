@@ -41,7 +41,7 @@ class ChatOrchestrator:
         for attempt in range(1, self.max_regenerations + 1):
             sanitized_text, sanitized = self.reply_style_guard.sanitize(candidate.text)
             sanitized_any = sanitized_any or sanitized
-            mode = "light" if candidate.source in ("kb_direct", "followup") else "standard"
+            mode = "light" if candidate.source in ("kb_direct", "followup", "address_route") else "standard"
             report = self.reply_style_guard.validate(
                 sanitized_text,
                 mode=mode,

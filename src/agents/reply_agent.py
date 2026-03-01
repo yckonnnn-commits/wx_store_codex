@@ -27,7 +27,16 @@ class ReplyAgent:
         intent_result: IntentResult,
         followup_decision: FollowupDecision,
     ) -> ReplyCandidate:
-        kb_detail = self._from_knowledge_detail(context.latest_user_text)
+        latest_text = str(context.latest_user_text or "").strip()
+        address_candidate = self._try_address_routing(latest_text)
+        if address_candidate is not None:
+            return address_candidate
+
+        kb_detail = self._from_knowledge_detail(latest_text)
+        if self._should_skip_address_kb(latest_text, kb_detail):
+            kb_detail = self._retry_care_kb_detail(latest_text) or {"matched": False}
+        elif (not kb_detail.get("matched")) and self._is_care_query(latest_text):
+            kb_detail = self._retry_care_kb_detail(latest_text) or kb_detail
         kb_meta = self._build_empty_kb_meta()
 
         if kb_detail.get("matched"):
@@ -111,6 +120,86 @@ class ReplyAgent:
             },
         )
 
+    def _try_address_routing(self, text: str) -> ReplyCandidate | None:
+        if not text:
+            return None
+        if not hasattr(self.knowledge_service, "resolve_store_recommendation"):
+            return None
+        route = self.knowledge_service.resolve_store_recommendation(text)
+        if not isinstance(route, dict):
+            return None
+        reason = str(route.get("reason", "") or "")
+        if reason in ("", "unknown"):
+            return None
+
+        # 护理类问题优先按护理回答，不被地址路由抢走。
+        if self._is_care_query(text) and not self._is_explicit_address_query(text):
+            return None
+
+        if reason == "shanghai_need_district":
+            return ReplyCandidate(
+                text="姐姐您在上海哪个区呀？我马上给您匹配最近门店（静安/人广/虹口/五角场/徐汇）🌹",
+                source="address_route",
+                kb_meta={
+                    "matched": False,
+                    "score": 0.0,
+                    "item_id": "",
+                    "mode": "address_route",
+                    "answer_index": -1,
+                    "answer_mode": "route",
+                    "repeat_fallback": False,
+                    "route_reason": reason,
+                    "target_store": "unknown",
+                },
+                should_regenerate=False,
+            )
+
+        if reason in ("sh_district_map:闵行", "sh_district_map:长宁", "sh_district_map:虹口", "sh_district_map:杨浦", "sh_district_map:五角场",
+                      "sh_district_map:黄浦", "sh_district_map:黄埔", "sh_district_map:人民广场", "sh_district_map:人广", "sh_district_map:徐汇",
+                      "sh_district_map:静安", "sh_district_map:浦东", "sh_district_map:青浦", "sh_district_map:金山", "sh_district_map:崇明",
+                      "sh_district_map:宝山", "sh_district_map:普陀", "sh_district_map:松江", "sh_district_map:嘉定", "sh_district_map:奉贤",
+                      "beijing_all_district", "north_fallback_beijing", "jiangzhe_to_sh_renmin"):
+            target_store = str(route.get("target_store", "") or "")
+            store_display = {}
+            if hasattr(self.knowledge_service, "get_store_display"):
+                store_display = self.knowledge_service.get_store_display(target_store)
+            store_name = str((store_display or {}).get("store_name", "") or "就近门店")
+            return ReplyCandidate(
+                text=f"姐姐这边建议您到{store_name}，我可以马上给您对接到店路线和预约时间😊",
+                source="address_route",
+                kb_meta={
+                    "matched": False,
+                    "score": 0.0,
+                    "item_id": "",
+                    "mode": "address_route",
+                    "answer_index": -1,
+                    "answer_mode": "route",
+                    "repeat_fallback": False,
+                    "route_reason": reason,
+                    "target_store": target_store,
+                },
+                should_regenerate=False,
+            )
+
+        if reason == "out_of_coverage":
+            return ReplyCandidate(
+                text="姐姐不在上海也可以远程定制，我先按您的头围和需求给您做方案，再安排寄送😊",
+                source="address_route",
+                kb_meta={
+                    "matched": False,
+                    "score": 0.0,
+                    "item_id": "",
+                    "mode": "address_route",
+                    "answer_index": -1,
+                    "answer_mode": "route",
+                    "repeat_fallback": False,
+                    "route_reason": reason,
+                    "target_store": "unknown",
+                },
+                should_regenerate=False,
+            )
+        return None
+
     def regenerate_with_feedback(
         self,
         context: ConversationContext,
@@ -155,6 +244,24 @@ class ReplyAgent:
         if not isinstance(detail, dict):
             return {"matched": False}
         return detail
+
+    def _retry_care_kb_detail(self, text: str) -> Dict[str, Any]:
+        if not self._is_care_query(text):
+            return {"matched": False}
+        probes = [
+            self._strip_location_noise(text),
+            "假发怎么清洗",
+            "如何清洗护理",
+            "清洗护理",
+        ]
+        for probe in probes:
+            probe_text = str(probe or "").strip()
+            if not probe_text:
+                continue
+            detail = self.knowledge_service.find_answer_detail(probe_text, threshold=0.45)
+            if isinstance(detail, dict) and detail.get("matched") and self._is_valid_care_detail(detail):
+                return detail
+        return {"matched": False}
 
     def _pick_kb_answer(
         self,
@@ -271,6 +378,60 @@ class ReplyAgent:
 
         candidates.sort(key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
         return candidates[:top_k]
+
+    def _should_skip_address_kb(self, text: str, kb_detail: Dict[str, Any]) -> bool:
+        if not isinstance(kb_detail, dict):
+            return False
+        if not kb_detail.get("matched"):
+            return False
+        intent = str(kb_detail.get("intent", "") or "").lower()
+        if intent != "address":
+            return False
+        # 例如“不在上海如何清洗”这类护理诉求，不应命中纯地址回答。
+        return self._is_care_query(text) and not self._is_explicit_address_query(text)
+
+    def _is_explicit_address_query(self, text: str) -> bool:
+        normalized = str(text or "").strip()
+        if not normalized:
+            return False
+        address_keywords = ("地址", "门店", "在哪", "哪里", "怎么去", "到店", "路线", "哪个区")
+        return any(k in normalized for k in address_keywords)
+
+    def _is_care_query(self, text: str) -> bool:
+        normalized = str(text or "").strip()
+        if not normalized:
+            return False
+        care_keywords = ("清洗", "怎么洗", "护理", "保养", "头发乱", "打结", "炸毛")
+        return any(k in normalized for k in care_keywords)
+
+    def _strip_location_noise(self, text: str) -> str:
+        normalized = str(text or "").strip()
+        if not normalized:
+            return ""
+        noise_patterns = (
+            r"不在上海",
+            r"在上海",
+            r"不在北京",
+            r"在北京",
+            r"异地",
+            r"外地",
+            r"如何",
+            r"怎么",
+            r"[？?！!，,。]",
+        )
+        cleaned = normalized
+        for pattern in noise_patterns:
+            cleaned = re.sub(pattern, "", cleaned)
+        cleaned = re.sub(r"\s+", "", cleaned)
+        return cleaned
+
+    def _is_valid_care_detail(self, detail: Dict[str, Any]) -> bool:
+        intent = str(detail.get("intent", "") or "").lower()
+        question = str(detail.get("question", "") or "")
+        care_terms = ("清洗", "护理", "保养", "打理")
+        if intent not in ("care", "wearing"):
+            return False
+        return any(term in question for term in care_terms)
 
     def _simple_overlap(self, a: str, b: str) -> float:
         if not a or not b:

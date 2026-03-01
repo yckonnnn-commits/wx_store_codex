@@ -19,7 +19,7 @@ class ReplyStyleGuard:
     def __init__(self, rules_path: Path = Path("config") / "v2_agent_rules.json"):
         self.rules_path = rules_path
         self.standard_min_hanzi = 10
-        self.standard_max_hanzi = 30
+        self.standard_max_hanzi = 45
         self.light_min_hanzi = 8
         self.light_max_hanzi = 45
         self.truncated_tails: List[str] = ["然后", "所以", "如果", "并且"]
