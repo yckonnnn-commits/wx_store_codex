@@ -1,7 +1,4 @@
-"""
-消息处理器
-单一编排链路：未读检测 -> 点击进入 -> 抓取聊天记录 -> Agent 决策 -> 发送文字/媒体。
-"""
+"""已重构: message_processor | V2 | 2026-03-01"""
 
 from __future__ import annotations
 
@@ -12,6 +9,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 from PySide6.QtCore import QObject, Signal, QTimer
 
+from ..agents.unread_session_agent import UnreadSessionAgent
+from ..domain.chat_models import FinalReply
+from .chat_orchestrator import ChatOrchestrator
 from .private_cs_agent import AgentDecision, CustomerServiceAgent
 from .session_manager import SessionManager
 from ..services.browser_service import BrowserService
@@ -28,11 +28,21 @@ class MessageProcessor(QObject):
     error_occurred = Signal(str)
     decision_ready = Signal(dict)
 
-    def __init__(self, browser_service: BrowserService, session_manager: SessionManager, agent: CustomerServiceAgent):
+    def __init__(
+        self,
+        browser_service: BrowserService,
+        session_manager: SessionManager,
+        agent: CustomerServiceAgent,
+        chat_orchestrator: Optional[ChatOrchestrator] = None,
+        agent_mode: str = "legacy",
+    ):
         super().__init__()
         self.browser = browser_service
         self.sessions = session_manager
         self.agent = agent
+        self.chat_orchestrator = chat_orchestrator
+        self.unread_session_agent = UnreadSessionAgent()
+        self.agent_mode = "v2" if str(agent_mode).strip().lower() == "v2" else "legacy"
         self.conversation_logger = ConversationLogger(Path("data") / "conversations")
 
         self._running = False
@@ -212,12 +222,29 @@ class MessageProcessor(QObject):
         )
 
         history = self._convert_history(messages)
-        decision = self.agent.decide(
-            session_id=session_id,
-            user_name=user_name,
-            latest_user_text=latest_user_message,
-            conversation_history=history,
-        )
+        if self._is_v2_enabled():
+            v2_state = self._load_v2_state(session_id=session_id, user_hash=user_hash)
+            context = self.unread_session_agent.build_context(
+                session_id=session_id,
+                user_name=user_name,
+                latest_user_text=latest_user_message,
+                history=history,
+                state=v2_state,
+            )
+            final_reply = self.chat_orchestrator.process(context)
+            decision = self._adapt_v2_final_reply(final_reply)
+            self._persist_v2_state(
+                session_id=session_id,
+                user_hash=user_hash,
+                final_reply=final_reply,
+            )
+        else:
+            decision = self.agent.decide(
+                session_id=session_id,
+                user_name=user_name,
+                latest_user_text=latest_user_message,
+                conversation_history=history,
+            )
 
         self.decision_ready.emit(
             {
@@ -314,7 +341,9 @@ class MessageProcessor(QObject):
             self.sessions.record_reply(session_id)
             self.reply_sent.emit(session_id, decision.reply_text)
 
-            extra_video = self.agent.mark_reply_sent(session_id, user_name, decision.reply_text)
+            extra_video = None
+            if not self._is_v2_enabled() and hasattr(self.agent, "mark_reply_sent"):
+                extra_video = self.agent.mark_reply_sent(session_id, user_name, decision.reply_text)
             media_queue = list(decision.media_items)
             if extra_video:
                 media_queue.append(extra_video)
@@ -590,6 +619,78 @@ class MessageProcessor(QObject):
 
     def _hash_id(self, text: str) -> str:
         return hashlib.md5((text or "").encode("utf-8", errors="ignore")).hexdigest()[:10]
+
+    def _is_v2_enabled(self) -> bool:
+        return self.agent_mode == "v2" and self.chat_orchestrator is not None
+
+    def _load_v2_state(self, session_id: str, user_hash: str) -> Dict[str, Any]:
+        session_state = self.agent.memory_store.get_session_state(session_id, user_hash=user_hash)
+        user_state = self.agent.memory_store.get_user_state(user_hash)
+        return {
+            "last_intent": str(session_state.get("v2_last_intent", "other")),
+            "followup_count": int(session_state.get("v2_followup_count", 0) or 0),
+            "recent_reply_hashes": list(user_state.get("recent_reply_hashes", []) or []),
+            "v2_kb_seen_count_by_item": dict(session_state.get("v2_kb_seen_count_by_item", {}) or {}),
+            "v2_recent_kb_answer_hashes": list(session_state.get("v2_recent_kb_answer_hashes", []) or []),
+        }
+
+    def _persist_v2_state(self, session_id: str, user_hash: str, final_reply: FinalReply) -> None:
+        session_state = self.agent.memory_store.get_session_state(session_id, user_hash=user_hash)
+        current_count = int(session_state.get("v2_followup_count", 0) or 0)
+        followup_count = current_count + 1 if final_reply.source == "followup" else 0
+        guard_report = final_reply.guard_report if isinstance(final_reply.guard_report, dict) else {}
+        kb_meta = guard_report.get("kb", {}) if isinstance(guard_report.get("kb", {}), dict) else {}
+        kb_item_id = str(kb_meta.get("item_id", "") or "")
+        kb_matched = bool(kb_meta.get("matched", False))
+        seen_map = dict(session_state.get("v2_kb_seen_count_by_item", {}) or {})
+        recent_kb_hashes = list(session_state.get("v2_recent_kb_answer_hashes", []) or [])
+        if kb_matched and kb_item_id:
+            seen_map[kb_item_id] = int(seen_map.get(kb_item_id, 0) or 0) + 1
+            recent_kb_hashes.append(self._hash_id(final_reply.text))
+        self.agent.memory_store.update_session_state(
+            session_id=session_id,
+            user_hash=user_hash,
+            updates={
+                "v2_last_intent": final_reply.intent.value,
+                "v2_followup_count": followup_count,
+                "v2_kb_seen_count_by_item": seen_map,
+                "v2_recent_kb_answer_hashes": recent_kb_hashes[-40:],
+            },
+        )
+        user_state = self.agent.memory_store.get_user_state(user_hash)
+        reply_hashes = list(user_state.get("recent_reply_hashes", []) or [])
+        reply_hashes.append(self._hash_id(final_reply.text))
+        self.agent.memory_store.update_user_state(
+            user_hash,
+            updates={"recent_reply_hashes": reply_hashes[-20:]},
+        )
+        self.agent.memory_store.save()
+
+    def _adapt_v2_final_reply(self, final_reply: FinalReply) -> AgentDecision:
+        guard_report = final_reply.guard_report if isinstance(final_reply.guard_report, dict) else {}
+        guard_reason = str(guard_report.get("reason", "v2_guard"))
+        generation_path = str(guard_report.get("generation_path", final_reply.source) or final_reply.source)
+        kb_meta = guard_report.get("kb", {}) if isinstance(guard_report.get("kb", {}), dict) else {}
+        return AgentDecision(
+            reply_text=final_reply.text,
+            intent=final_reply.intent.value,
+            route_reason=generation_path or guard_reason,
+            reply_goal="v2_text_reply",
+            media_plan="none",
+            media_items=[],
+            reply_source=f"v2_{generation_path or final_reply.source}",
+            rule_id="V2_ORCHESTRATOR",
+            rule_applied=True,
+            llm_fallback_reason=guard_reason if final_reply.source == "template_fallback" else "",
+            kb_match_score=float(kb_meta.get("score", 0.0) or 0.0),
+            kb_item_id=str(kb_meta.get("item_id", "") or ""),
+            kb_variant_selected_index=int(
+                kb_meta.get("answer_index", -1)
+                if kb_meta.get("answer_index", None) is not None
+                else -1
+            ),
+            kb_match_mode=str(kb_meta.get("mode", "") or ""),
+        )
 
     def _build_session_id(self, user_name: str, chat_session_key: str, chat_session_fingerprint: str = "") -> str:
         key = (chat_session_key or "").strip()

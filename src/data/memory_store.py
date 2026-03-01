@@ -92,6 +92,11 @@ class MemoryStore:
             "last_reply_goal": "解答",
             "last_question_type": "pre_sales",
             "after_sales_session_locked": False,
+            "last_store_recommend_store": "",
+            "last_store_recommend_at": "",
+            "last_store_recommend_text_hash": "",
+            "v2_kb_seen_count_by_item": {},
+            "v2_recent_kb_answer_hashes": [],
         }
 
     def _default_user_state(self, user_hash: str) -> Dict[str, Any]:
@@ -224,10 +229,19 @@ class MemoryStore:
         state.setdefault("last_reply_goal", "解答")
         state.setdefault("last_question_type", "pre_sales")
         state.setdefault("after_sales_session_locked", False)
+        state.setdefault("last_store_recommend_store", "")
+        state.setdefault("last_store_recommend_at", "")
+        state.setdefault("last_store_recommend_text_hash", "")
+        state.setdefault("v2_kb_seen_count_by_item", {})
+        state.setdefault("v2_recent_kb_answer_hashes", [])
         if not isinstance(state.get("sent_address_stores"), list):
             state["sent_address_stores"] = []
         if not isinstance(state.get("address_image_last_sent_at_by_store"), dict):
             state["address_image_last_sent_at_by_store"] = {}
+        if not isinstance(state.get("v2_kb_seen_count_by_item"), dict):
+            state["v2_kb_seen_count_by_item"] = {}
+        if not isinstance(state.get("v2_recent_kb_answer_hashes"), list):
+            state["v2_recent_kb_answer_hashes"] = []
 
     def _fill_user_defaults(self, state: Dict[str, Any], user_hash: str) -> None:
         now = datetime.now().isoformat()

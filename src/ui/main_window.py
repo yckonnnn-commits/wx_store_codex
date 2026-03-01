@@ -1,7 +1,4 @@
-"""
-主窗口
-整合 PySide6 多标签页与单一 Agent 主链路。
-"""
+"""已重构: main_window | V2 | 2026-03-01"""
 
 from __future__ import annotations
 
@@ -19,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..core.message_processor import MessageProcessor
+from ..core.chat_orchestrator import build_v2_orchestrator
 from ..core.private_cs_agent import CustomerServiceAgent
 from ..core.session_manager import SessionManager
 from ..data.config_manager import ConfigManager
@@ -73,6 +71,10 @@ class MainWindow(QWidget):
             playbook_doc_path=Path("docs") / "private_ai_customer_service_playbook.md",
             reply_templates_path=Path("config") / "reply_templates.json",
             media_whitelist_path=Path("config") / "media_whitelist.json",
+        )
+        self.chat_orchestrator = build_v2_orchestrator(
+            knowledge_service=self.knowledge_service,
+            llm_service=self.llm_service,
         )
         self.message_processor = None
 
@@ -151,6 +153,8 @@ class MainWindow(QWidget):
             browser_service=self.browser_service,
             session_manager=self.session_manager,
             agent=self.agent,
+            chat_orchestrator=self.chat_orchestrator,
+            agent_mode=str(self.config_manager.get("agent_mode", "legacy")),
         )
 
         self._update_model_badge()

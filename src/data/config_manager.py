@@ -1,7 +1,4 @@
-"""
-配置管理器
-负责模型配置和系统配置的持久化管理
-"""
+"""已重构: config_manager | V2 | 2026-03-01"""
 
 import json
 import os
@@ -25,6 +22,7 @@ class ConfigManager(QObject):
             "version": 1,
             "updated_at": "",
             "current_model": "ChatGPT",
+            "agent_mode": "legacy",
             "models": {
                 "ChatGPT": {
                     "base_url": "https://api.openai.com/v1",

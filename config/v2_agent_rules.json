@@ -1,0 +1,20 @@
+{
+  "intent_keywords": {
+    "pre_sales": ["价格", "多少钱", "怎么买", "购买", "下单", "到店", "门店", "地址", "预约", "材质", "怎么戴", "会掉吗"],
+    "after_sales": ["售后", "维修", "返修", "保养", "清洗", "掉发", "毛躁", "不合适", "退货", "换货", "睡觉可以戴吗"],
+    "greeting": ["你好", "在吗", "哈喽", "您好", "hello", "在不在"],
+    "closing": ["谢谢", "再见", "先这样", "晚安", "拜拜", "打扰了"]
+  },
+  "followup": {
+    "max_rounds": 2,
+    "pre_sales_missing_geo_keywords": ["上海", "北京", "徐汇", "静安", "虹口", "五角场", "人广", "朝阳"],
+    "after_sales_missing_detail_keywords": ["佩戴", "多久", "照片", "图片", "发尾", "刘海", "头顶"]
+  },
+  "style_guard": {
+    "standard_min_hanzi": 10,
+    "standard_max_hanzi": 30,
+    "light_min_hanzi": 8,
+    "light_max_hanzi": 45,
+    "truncated_tails": ["然后", "所以", "如果", "并且"]
+  }
+}

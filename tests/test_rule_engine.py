@@ -1010,7 +1010,7 @@ class RuleEngineTestCase(unittest.TestCase):
             )
 
             d2 = agent.decide(session_id, user_name, "怎么预约", [])
-            self.assertEqual(d2.rule_id, "PURCHASE_CONTACT_REMIND_ONLY")
+            self.assertEqual(d2.rule_id, "PURCHASE_APPOINTMENT_REMIND_ONLY")
             self.assertEqual(d2.media_plan, "none")
             self.assertFalse(d2.media_items)
 
@@ -1056,7 +1056,7 @@ class RuleEngineTestCase(unittest.TestCase):
             self.assertEqual(d0.rule_id, "ADDR_STORE_RECOMMEND")
 
             d1 = agent.decide(session_id, user_name, "怎么预约？", [])
-            self.assertEqual(d1.rule_id, "PURCHASE_CONTACT_FROM_KNOWN_GEO")
+            self.assertEqual(d1.rule_id, "PURCHASE_APPOINTMENT_CONTACT_IMAGE")
             self.assertEqual(d1.media_plan, "contact_image")
             self.assertTrue(d1.media_items)
             self._append_media_success_log(
@@ -1101,7 +1101,7 @@ class RuleEngineTestCase(unittest.TestCase):
             self.assertEqual(d0.rule_id, "ADDR_STORE_RECOMMEND")
 
             d1 = agent.decide(session_id, user_name, "需要预约吗？", [])
-            self.assertEqual(d1.rule_id, "PURCHASE_CONTACT_FROM_KNOWN_GEO")
+            self.assertEqual(d1.rule_id, "PURCHASE_APPOINTMENT_CONTACT_IMAGE")
             self.assertEqual(d1.media_plan, "contact_image")
             self.assertTrue(d1.media_items)
 
@@ -1135,10 +1135,21 @@ class RuleEngineTestCase(unittest.TestCase):
             )
 
             d2 = agent.decide(session_id, user_name, "我在门头沟", [])
-            self.assertEqual(d2.rule_id, "ADDR_STORE_RECOMMEND")
+            self.assertEqual(d2.rule_id, "STORE_RECOMMEND_REMIND_ONLY")
             self.assertEqual(d2.media_plan, "none")
-            self.assertEqual(d2.media_skip_reason, "address_image_cooldown")
+            self.assertFalse(d2.media_skip_reason)
             self.assertFalse(d2.media_items)
+
+            agent.memory_store.update_session_state(
+                session_id,
+                {"last_store_recommend_at": "2020-01-01T00:00:00"},
+                user_hash=user_hash,
+            )
+            d3 = agent.decide(session_id, user_name, "我在门头沟", [])
+            self.assertEqual(d3.rule_id, "ADDR_STORE_RECOMMEND")
+            self.assertEqual(d3.media_plan, "none")
+            self.assertEqual(d3.media_skip_reason, "address_image_cooldown")
+            self.assertFalse(d3.media_items)
 
             (conversations_dir / f"{session_id}.jsonl").unlink(missing_ok=True)
             self._append_media_success_log(
@@ -1150,9 +1161,15 @@ class RuleEngineTestCase(unittest.TestCase):
                 user_id_hash=user_hash,
             )
 
-            d3 = agent.decide(session_id, user_name, "我在门头沟", [])
-            self.assertEqual(d3.media_plan, "address_image")
-            self.assertTrue(d3.media_items)
+            agent.memory_store.update_session_state(
+                session_id,
+                {"last_store_recommend_at": "2020-01-01T00:00:00"},
+                user_hash=user_hash,
+            )
+            d4 = agent.decide(session_id, user_name, "我在门头沟", [])
+            self.assertEqual(d4.rule_id, "ADDR_STORE_RECOMMEND")
+            self.assertEqual(d4.media_plan, "address_image")
+            self.assertTrue(d4.media_items)
 
     def test_both_images_lock_blocks_future_images(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1295,6 +1312,102 @@ class RuleEngineTestCase(unittest.TestCase):
             self.assertNotEqual(d3.reply_source, "knowledge")
             self.assertEqual(d3.media_plan, "none")
 
+    def test_after_sales_locked_negative_address_expression_should_not_route_address(self):
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            conversations_dir = temp_dir / "conversations"
+            agent, _, _, _ = self._build_agent(temp_dir)
+            user_name = "用户售后地址否定"
+            user_hash = agent._hash_user(user_name)
+            self._append_assistant_reply_log(
+                conversations_dir=conversations_dir,
+                session_id="seed_after_sales_neg_addr",
+                user_id_hash=user_hash,
+                ts="2026-02-27T11:25:00",
+            )
+            session_id = "chat_after_sales_neg_addr"
+
+            d1 = agent.decide(
+                session_id=session_id,
+                user_name=user_name,
+                latest_user_text="可是我不在上海，也不在北京啊，怎么帮我调整？",
+                conversation_history=[],
+            )
+            self.assertEqual(d1.rule_id, "AFTER_SALES_REMOTE_SUPPORT")
+
+            d2 = agent.decide(
+                session_id=session_id,
+                user_name=user_name,
+                latest_user_text="我的头发乱了，就是造型乱了，跟位置没关系，是刘海乱了。",
+                conversation_history=[{"role": "assistant", "content": d1.reply_text}],
+            )
+            self.assertEqual(d2.rule_id, "AFTER_SALES_DETAIL_GUIDE")
+            self.assertNotEqual(d2.rule_id, "ADDR_ASK_REGION_R1")
+            self.assertEqual(d2.media_plan, "none")
+
+    def test_appointment_flow_known_geo_contact_then_remind_without_store_repeat(self):
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            conversations_dir = temp_dir / "conversations"
+            agent, _, _, _ = self._build_agent(temp_dir)
+            user_name = "用户预约引导"
+            user_hash = agent._hash_user(user_name)
+            self._append_assistant_reply_log(
+                conversations_dir=conversations_dir,
+                session_id="seed_appointment_flow",
+                user_id_hash=user_hash,
+                ts="2026-02-27T11:28:00",
+            )
+            session_id = "chat_appointment_flow"
+
+            d1 = agent.decide(session_id, user_name, "我在上海徐汇", [])
+            self.assertEqual(d1.rule_id, "ADDR_STORE_RECOMMEND")
+
+            d2 = agent.decide(session_id, user_name, "你们怎么预约？", [])
+            self.assertEqual(d2.rule_id, "PURCHASE_APPOINTMENT_CONTACT_IMAGE")
+            self.assertEqual(d2.media_plan, "contact_image")
+            self.assertTrue(d2.media_items)
+            self._append_media_success_log(
+                conversations_dir=conversations_dir,
+                session_id=session_id,
+                media_type="contact_image",
+                media_path=d2.media_items[0]["path"],
+                ts="2026-02-27T11:29:00",
+                user_id_hash=user_hash,
+            )
+
+            d3 = agent.decide(session_id, user_name, "我明天有空，可以帮我吗？", [])
+            self.assertEqual(d3.rule_id, "PURCHASE_APPOINTMENT_REMIND_ONLY")
+            self.assertEqual(d3.media_plan, "none")
+
+            d4 = agent.decide(session_id, user_name, "那我明天直接过去徐汇，可以的吧？", [])
+            self.assertEqual(d4.rule_id, "PURCHASE_APPOINTMENT_REMIND_ONLY")
+            self.assertEqual(d4.media_plan, "none")
+            self.assertNotEqual(d4.rule_id, "ADDR_STORE_RECOMMEND")
+
+    def test_store_recommend_same_store_dedup_to_remind_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            conversations_dir = temp_dir / "conversations"
+            agent, _, _, _ = self._build_agent(temp_dir)
+            user_name = "用户门店去重"
+            user_hash = agent._hash_user(user_name)
+            self._append_assistant_reply_log(
+                conversations_dir=conversations_dir,
+                session_id="seed_store_dedupe",
+                user_id_hash=user_hash,
+                ts="2026-02-27T11:32:00",
+            )
+            session_id = "chat_store_dedupe"
+
+            d1 = agent.decide(session_id, user_name, "我在上海徐汇", [])
+            self.assertEqual(d1.rule_id, "ADDR_STORE_RECOMMEND")
+
+            d2 = agent.decide(session_id, user_name, "我在上海徐汇", [])
+            self.assertEqual(d2.rule_id, "STORE_RECOMMEND_REMIND_ONLY")
+            self.assertEqual(d2.media_plan, "none")
+            self.assertIn("记得先预约", d2.reply_text)
+
     def test_after_sales_session_should_not_trigger_delayed_video(self):
         with tempfile.TemporaryDirectory() as td:
             temp_dir = Path(td)
@@ -1401,7 +1514,7 @@ class RuleEngineTestCase(unittest.TestCase):
                 user_hash=user_hash,
             )
 
-            d1 = agent.decide(session_id, user_name, "怎么预约", [])
+            d1 = agent.decide(session_id, user_name, "我想买", [])
             self.assertEqual(d1.rule_id, "PURCHASE_AFTER_BOTH_FIRST_HINT")
             self.assertEqual(d1.media_plan, "none")
             self.assertIn("画圈圈", d1.reply_text)

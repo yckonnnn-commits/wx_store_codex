@@ -1,13 +1,13 @@
 {
   "version": 4,
-  "updated_at": "2026-03-01T15:38:40.271127",
+  "updated_at": "2026-03-01T17:49:19.210479",
   "sessions": {
     "sim_session": {
       "session_id": "sim_session",
       "user_hash": "de81f6891f",
       "session_fingerprint": "",
       "first_seen_at": "2026-02-28T19:44:46.895830",
-      "updated_at": "2026-03-01T15:38:40.270830",
+      "updated_at": "2026-03-01T17:49:19.210341",
       "address_prompt_count": 0,
       "sent_address_stores": [],
       "address_image_sent_count": 0,
@@ -35,7 +35,18 @@
       "last_contact_trigger_signature": "known_geo_context|pre_sales|帮我预约一下",
       "last_contact_trigger_at": "2026-03-01T15:38:30.122163",
       "last_question_type": "after_sales",
-      "after_sales_session_locked": true
+      "after_sales_session_locked": true,
+      "last_store_recommend_store": "",
+      "last_store_recommend_at": "",
+      "last_store_recommend_text_hash": "",
+      "v2_kb_seen_count_by_item": {
+        "d38f8e7d-8c55-48ce-ab78-64a36a92d95b": 1
+      },
+      "v2_recent_kb_answer_hashes": [
+        "夏天都可以戴的！我们的假发采用植物网底和透气孔设计，很透气。🥰"
+      ],
+      "v2_last_intent": "other",
+      "v2_followup_count": 0
     },
     "sim_media_user": {
       "session_id": "sim_media_user",
@@ -70,7 +81,12 @@
       "last_contact_trigger_signature": "",
       "last_contact_trigger_at": "",
       "last_question_type": "pre_sales",
-      "after_sales_session_locked": false
+      "after_sales_session_locked": false,
+      "last_store_recommend_store": "",
+      "last_store_recommend_at": "",
+      "last_store_recommend_text_hash": "",
+      "v2_kb_seen_count_by_item": {},
+      "v2_recent_kb_answer_hashes": []
     },
     "sim_batch_20260228": {
       "session_id": "sim_batch_20260228",
@@ -109,7 +125,12 @@
       "last_contact_trigger_signature": "",
       "last_contact_trigger_at": "",
       "last_question_type": "pre_sales",
-      "after_sales_session_locked": false
+      "after_sales_session_locked": false,
+      "last_store_recommend_store": "",
+      "last_store_recommend_at": "",
+      "last_store_recommend_text_hash": "",
+      "v2_kb_seen_count_by_item": {},
+      "v2_recent_kb_answer_hashes": []
     },
     "sim_not_in_sh_case": {
       "session_id": "sim_not_in_sh_case",
@@ -144,7 +165,12 @@
       "last_contact_trigger_signature": "",
       "last_contact_trigger_at": "",
       "last_question_type": "pre_sales",
-      "after_sales_session_locked": false
+      "after_sales_session_locked": false,
+      "last_store_recommend_store": "",
+      "last_store_recommend_at": "",
+      "last_store_recommend_text_hash": "",
+      "v2_kb_seen_count_by_item": {},
+      "v2_recent_kb_answer_hashes": []
     },
     "sim_batch_20260228_rerun": {
       "session_id": "sim_batch_20260228_rerun",
@@ -183,7 +209,12 @@
       "last_contact_trigger_signature": "",
       "last_contact_trigger_at": "",
       "last_question_type": "pre_sales",
-      "after_sales_session_locked": false
+      "after_sales_session_locked": false,
+      "last_store_recommend_store": "",
+      "last_store_recommend_at": "",
+      "last_store_recommend_text_hash": "",
+      "v2_kb_seen_count_by_item": {},
+      "v2_recent_kb_answer_hashes": []
     },
     "sim_llm_check_1": {
       "session_id": "sim_llm_check_1",
@@ -218,7 +249,12 @@
       "last_contact_trigger_signature": "",
       "last_contact_trigger_at": "",
       "last_question_type": "pre_sales",
-      "after_sales_session_locked": false
+      "after_sales_session_locked": false,
+      "last_store_recommend_store": "",
+      "last_store_recommend_at": "",
+      "last_store_recommend_text_hash": "",
+      "v2_kb_seen_count_by_item": {},
+      "v2_recent_kb_answer_hashes": []
     },
     "sim_llm_check_2": {
       "session_id": "sim_llm_check_2",
@@ -253,7 +289,12 @@
       "last_contact_trigger_signature": "",
       "last_contact_trigger_at": "",
       "last_question_type": "pre_sales",
-      "after_sales_session_locked": false
+      "after_sales_session_locked": false,
+      "last_store_recommend_store": "",
+      "last_store_recommend_at": "",
+      "last_store_recommend_text_hash": "",
+      "v2_kb_seen_count_by_item": {},
+      "v2_recent_kb_answer_hashes": []
     },
     "sim_llm_check_3": {
       "session_id": "sim_llm_check_3",
@@ -288,7 +329,12 @@
       "last_contact_trigger_signature": "",
       "last_contact_trigger_at": "",
       "last_question_type": "pre_sales",
-      "after_sales_session_locked": false
+      "after_sales_session_locked": false,
+      "last_store_recommend_store": "",
+      "last_store_recommend_at": "",
+      "last_store_recommend_text_hash": "",
+      "v2_kb_seen_count_by_item": {},
+      "v2_recent_kb_answer_hashes": []
     },
     "sim_llm_check_4": {
       "session_id": "sim_llm_check_4",
@@ -323,7 +369,12 @@
       "last_contact_trigger_signature": "",
       "last_contact_trigger_at": "",
       "last_question_type": "pre_sales",
-      "after_sales_session_locked": false
+      "after_sales_session_locked": false,
+      "last_store_recommend_store": "",
+      "last_store_recommend_at": "",
+      "last_store_recommend_text_hash": "",
+      "v2_kb_seen_count_by_item": {},
+      "v2_recent_kb_answer_hashes": []
     }
   },
   "users": {
@@ -462,6 +513,21 @@
         "姐姐明白我先把关键点给您讲清楚呀",
         "姐姐收到我帮您一步步梳理最合适的方案呀",
         "姐姐明白我先把关键点给您讲清楚呀"
+      ]
+    },
+    "sim_sim_user": {
+      "user_hash": "sim_sim_user",
+      "first_seen_at": "2026-03-01T17:48:15.152477",
+      "updated_at": "2026-03-01T17:49:19.210353",
+      "video_armed": false,
+      "video_sent": false,
+      "post_contact_reply_count": 0,
+      "recent_reply_hashes": [
+        "时尚，完全没问题哦～。🥰",
+        "单后我们安排快递寄出。😊",
+        "单，全程包邮寄到家～。😊",
+        "和透气孔设计，很透气。🥰",
+        "紧扣固定的，戴上很稳。🥰"
       ]
     }
   }

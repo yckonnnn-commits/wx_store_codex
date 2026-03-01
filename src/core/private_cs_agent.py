@@ -93,6 +93,15 @@ APPOINTMENT_PRIORITY_KEYWORDS = (
     "需要预约",
     "要预约",
 )
+APPOINTMENT_SWITCH_KEYWORDS = (
+    "预约",
+    "明天",
+    "后天",
+    "有空",
+    "直接过去",
+    "帮我安排",
+    "可以帮我吗",
+)
 AFTER_SALES_HINT_KEYWORDS = (
     "售后",
     "质保",
@@ -110,6 +119,10 @@ AFTER_SALES_HINT_KEYWORDS = (
     "不舒服",
 )
 AFTER_SALES_DETAIL_HINT_KEYWORDS = (
+    "头发乱",
+    "造型乱",
+    "刘海乱",
+    "刘海",
     "毛躁",
     "炸毛",
     "打结",
@@ -137,6 +150,14 @@ AFTER_SALES_GENERIC_BLOCK_PHRASES = (
     "可以的",
     "没问题",
 )
+NEG_ADDRESS_EXPRESSIONS = (
+    "不问地址",
+    "不是问地址",
+    "跟地址没关系",
+    "跟位置没关系",
+    "不是位置问题",
+    "不用看位置",
+)
 PRE_SALES_HINT_KEYWORDS = (
     "怎么买",
     "购买",
@@ -150,6 +171,7 @@ PRE_SALES_HINT_KEYWORDS = (
     "门店",
     "地址",
 )
+STORE_RECOMMEND_DEDUPE_HOURS = 6
 
 
 DEFAULT_REPLY_TEMPLATES: Dict[str, Any] = {
@@ -171,6 +193,9 @@ DEFAULT_REPLY_TEMPLATES: Dict[str, Any] = {
     "after_sales_remote_support": "姐姐，{region}没有门店也没关系，售后问题我先在这里帮您处理，您把具体情况发我（佩戴时长/问题照片）我马上给您方案🌹",
     "after_sales_detail_solution": "姐姐收到，您这个情况先这样处理：先用温水轻喷在毛躁处，再用宽齿梳从发尾往上顺梳，最后少量护发精油抚平；先不要高温拉扯。您佩戴{duration}了，麻烦再发我一张发尾近照和整体照，我给您进一步细化方案🌹",
     "after_sales_detail_collect": "姐姐我在处理您的售后问题，您把佩戴时长、问题部位（发尾/刘海/头顶）和近照发我，我马上给您对应处理步骤🌹",
+    "appointment_contact_intro": "姐姐您这个时间可以安排，麻烦看下图里圈起来的位置添加，我马上给您登记预约🌹",
+    "appointment_contact_remind_only": "姐姐您直接按上面图里圈起来的位置联系我就行，我这边立刻给您约明天时间🌹",
+    "store_recommend_remind_only": "姐姐{store_name}位置您看上面那张图就可以啦，过去前记得先预约，我这边马上帮您对接时间🌹",
     "strong_intent_after_both_first": "姐姐，您可以看上面的画圈圈地方，我让老师跟您预约～💗",
     "contact_followup_1": "姐姐您看下我刚发的联系方式图，按图添加后跟我说一声，我马上接着帮您安排😊",
     "contact_followup_2": "姐姐刚刚那张联系方式图您点开就能看到，添加后回我一句，我立刻继续帮您跟进😊",
@@ -435,7 +460,13 @@ class CustomerServiceAgent:
 
         if appointment_kb_decision and appointment_kb_decision.reply_source == "knowledge":
             decision = appointment_kb_decision
-        elif self._should_apply_rule_decision(text=text, intent=intent, route=route, session_state=session_state):
+        elif self._should_apply_rule_decision(
+            text=text,
+            intent=intent,
+            route=route,
+            session_state=session_state,
+            question_type=question_type,
+        ):
             decision = self._decide_rule_reply(
                 session_id=session_id,
                 text=text,
@@ -471,6 +502,9 @@ class CustomerServiceAgent:
             "ADDR_OUT_OF_COVERAGE",
             "ADDR_STORE_RECOMMEND",
             "CONTACT_SEND_IMAGE",
+            "PURCHASE_APPOINTMENT_CONTACT_IMAGE",
+            "PURCHASE_APPOINTMENT_REMIND_ONLY",
+            "STORE_RECOMMEND_REMIND_ONLY",
         }
         should_rewrite = (
             decision.reply_source in ("llm", "fallback")
@@ -526,6 +560,16 @@ class CustomerServiceAgent:
         target_store = route.get("target_store", "unknown")
         detected_region = route.get("detected_region", "") or ""
         next_knowledge_reply_count = knowledge_reply_count + (1 if decision.reply_source == "knowledge" else 0)
+        next_store_recommend_store = str(session_state.get("last_store_recommend_store", "") or "")
+        next_store_recommend_at = str(session_state.get("last_store_recommend_at", "") or "")
+        next_store_recommend_text_hash = str(session_state.get("last_store_recommend_text_hash", "") or "")
+        if decision.rule_id in ("ADDR_STORE_RECOMMEND", "STORE_RECOMMEND_REMIND_ONLY"):
+            store_for_recommend = str(target_store if target_store != "unknown" else session_state.get("last_target_store", "") or "")
+            if store_for_recommend:
+                next_store_recommend_store = store_for_recommend
+            next_store_recommend_at = now
+            next_store_recommend_text_hash = self._normalize_for_dedupe(decision.reply_text)
+
         self.memory_store.update_session_state(
             session_id,
             {
@@ -539,6 +583,9 @@ class CustomerServiceAgent:
                 "knowledge_reply_count": next_knowledge_reply_count,
                 "last_question_type": question_type,
                 "after_sales_session_locked": bool(question_type == "after_sales"),
+                "last_store_recommend_store": next_store_recommend_store,
+                "last_store_recommend_at": next_store_recommend_at,
+                "last_store_recommend_text_hash": next_store_recommend_text_hash,
             },
             user_hash=user_hash,
         )
@@ -643,7 +690,7 @@ class CustomerServiceAgent:
         }
 
     def _detect_intent(self, text: str) -> str:
-        if self.knowledge_service.is_address_query(text):
+        if self.knowledge_service.is_address_query(text) and not self._contains_neg_address_expression(text):
             return "address"
         if self.knowledge_service.is_purchase_intent(text):
             return "purchase"
@@ -676,9 +723,10 @@ class CustomerServiceAgent:
         if detected_question_type == "after_sales":
             return "after_sales"
         if bool(session_state.get("after_sales_session_locked", False)):
-            normalized_text = re.sub(r"\s+", "", (text or ""))
-            if any(keyword in normalized_text for keyword in PRE_SALES_HINT_KEYWORDS):
-                return detected_question_type
+            if self._looks_like_appointment_switch(text):
+                return "pre_sales"
+            if self._contains_neg_address_expression(text):
+                return "after_sales"
             return "after_sales"
         return detected_question_type
 
@@ -713,13 +761,30 @@ class CustomerServiceAgent:
         duration = self._extract_after_sales_duration(text) or "一段时间"
         return self._render_template("after_sales_detail_solution", duration=duration)
 
+    def _contains_neg_address_expression(self, text: str) -> bool:
+        normalized_text = re.sub(r"\s+", "", (text or ""))
+        if not normalized_text:
+            return False
+        return any(keyword in normalized_text for keyword in NEG_ADDRESS_EXPRESSIONS)
+
+    def _looks_like_appointment_switch(self, text: str) -> bool:
+        normalized_text = re.sub(r"\s+", "", (text or ""))
+        if not normalized_text:
+            return False
+        return any(keyword in normalized_text for keyword in APPOINTMENT_SWITCH_KEYWORDS)
+
     def _should_apply_rule_decision(
         self,
         text: str,
         intent: str,
         route: Dict[str, Any],
         session_state: Dict[str, Any],
+        question_type: str = "pre_sales",
     ) -> bool:
+        if question_type == "after_sales":
+            return True
+        if self._looks_like_appointment_switch(text):
+            return True
         route_type = route.get("route_type", "unknown")
         if route_type in ("coverage", "non_coverage", "need_district"):
             return True
@@ -813,6 +878,34 @@ class CustomerServiceAgent:
         both_images_sent = self._has_both_images_sent(session_state)
         neg_shanghai_hint = self._has_neg_shanghai_hint(text)
         whitelist = self._is_media_whitelist_session(session_id)
+        appointment_switch = self._looks_like_appointment_switch(text)
+
+        if question_type == "after_sales" and not appointment_switch:
+            if reason == "out_of_coverage":
+                region = route.get("detected_region") or route_region(reason, text) or session_state.get("last_detected_region", "") or "您所在地区"
+                session_state["last_geo_pending"] = False
+                session_state["geo_followup_round"] = 0
+                session_state["geo_choice_offered"] = False
+                return AgentDecision(
+                    reply_text=self._render_template("after_sales_remote_support", region=region),
+                    intent="general",
+                    route_reason="out_of_coverage_after_sales",
+                    reply_goal="解答",
+                    media_plan="none",
+                    reply_source="rule",
+                    rule_id="AFTER_SALES_REMOTE_SUPPORT",
+                    rule_applied=True,
+                    geo_context_source=geo_context.get("source", ""),
+                )
+            return self._decide_general_reply(
+                latest_user_text=text,
+                intent="general",
+                route=route,
+                conversation_history=conversation_history,
+                session_state=session_state,
+                user_state=user_state,
+                question_type="after_sales",
+            )
 
         if is_first_turn_global and intent == "purchase" and reason in ("unknown", "need_region"):
             return self._build_geo_followup_decision(session_state=session_state, route_reason="need_region", intent="purchase")
@@ -858,19 +951,6 @@ class CustomerServiceAgent:
             session_state["last_geo_pending"] = False
             session_state["geo_followup_round"] = 0
             session_state["geo_choice_offered"] = False
-            if question_type == "after_sales":
-                return AgentDecision(
-                    reply_text=self._render_template("after_sales_remote_support", region=region),
-                    intent="general",
-                    route_reason="out_of_coverage_after_sales",
-                    reply_goal="解答",
-                    media_plan="none",
-                    reply_source="rule",
-                    rule_id="AFTER_SALES_REMOTE_SUPPORT",
-                    rule_applied=True,
-                    geo_context_source=geo_context.get("source", ""),
-                )
-
             if self._is_contact_image_sent_in_session(session_id=session_id) and not whitelist:
                 return AgentDecision(
                     reply_text=self._render_template("non_coverage_contact_remind_only", region=region),
@@ -892,6 +972,39 @@ class CustomerServiceAgent:
                 media_plan="contact_image",
                 reply_source="rule",
                 rule_id="ADDR_OUT_OF_COVERAGE",
+                rule_applied=True,
+                geo_context_source=geo_context.get("source", ""),
+            )
+
+        if (
+            appointment_switch
+            and reason != "out_of_coverage"
+            and geo_context.get("known")
+            and intent in ("purchase", "general")
+        ):
+            session_state["last_geo_pending"] = False
+            session_state["geo_followup_round"] = 0
+            session_state["geo_choice_offered"] = False
+            if self._is_contact_image_sent_in_session(session_id=session_id):
+                return AgentDecision(
+                    reply_text=self._render_template("appointment_contact_remind_only"),
+                    intent="purchase",
+                    route_reason=reason if reason != "unknown" else "appointment_known_geo",
+                    reply_goal="推进购买意图",
+                    media_plan="none",
+                    reply_source="rule",
+                    rule_id="PURCHASE_APPOINTMENT_REMIND_ONLY",
+                    rule_applied=True,
+                    geo_context_source=geo_context.get("source", ""),
+                )
+            return AgentDecision(
+                reply_text=self._render_template("appointment_contact_intro"),
+                intent="purchase",
+                route_reason=reason if reason != "unknown" else "appointment_known_geo",
+                reply_goal="推进购买意图",
+                media_plan="contact_image",
+                reply_source="rule",
+                rule_id="PURCHASE_APPOINTMENT_CONTACT_IMAGE",
                 rule_applied=True,
                 geo_context_source=geo_context.get("source", ""),
             )
@@ -1002,6 +1115,18 @@ class CustomerServiceAgent:
             session_state["last_geo_pending"] = False
             session_state["geo_followup_round"] = 0
             session_state["geo_choice_offered"] = False
+            if self._should_dedupe_store_recommend(session_state=session_state, target_store=target_store):
+                return AgentDecision(
+                    reply_text=self._render_template("store_recommend_remind_only", store_name=store_name),
+                    intent="purchase" if self._looks_like_appointment_switch(text) else "address",
+                    route_reason=f"{reason}_repeat" if reason != "unknown" else "store_recommend_repeat",
+                    reply_goal="推进购买意图" if self._looks_like_appointment_switch(text) else "解答",
+                    media_plan="none",
+                    reply_source="rule",
+                    rule_id="STORE_RECOMMEND_REMIND_ONLY",
+                    rule_applied=True,
+                    geo_context_source=geo_context.get("source", ""),
+                )
             return AgentDecision(
                 reply_text=self._render_template("store_recommend", store_name=store_name),
                 intent="address",
@@ -1569,6 +1694,19 @@ class CustomerServiceAgent:
     def _is_contact_image_sent_in_session(self, session_id: str) -> bool:
         session_video = self.summarize_session_video_from_log(session_id=session_id)
         return bool(session_video.get("contact_sent"))
+
+    def _should_dedupe_store_recommend(self, session_state: Dict[str, Any], target_store: str) -> bool:
+        store = str(target_store or "").strip()
+        if not store:
+            return False
+        last_store = str(session_state.get("last_store_recommend_store", "") or "").strip()
+        if not last_store or last_store != store:
+            return False
+
+        last_at = self._parse_iso(str(session_state.get("last_store_recommend_at", "") or ""))
+        if not last_at:
+            return True
+        return (datetime.now() - last_at) <= timedelta(hours=STORE_RECOMMEND_DEDUPE_HOURS)
 
     def _has_both_images_sent(self, session_state: Dict[str, Any]) -> bool:
         return (
