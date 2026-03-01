@@ -309,6 +309,7 @@ class ReplyAgent:
             "wearing",
             "care",
             "address",
+            "delivery_time",
         ):
             return score >= 0.45
         return False

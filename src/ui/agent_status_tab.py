@@ -1,7 +1,4 @@
-"""
-Agent 策略与状态页
-用于查看当前 Agent 规则状态并调整关键参数。
-"""
+"""已重构: agent_status_tab | V2 | 2026-03-01"""
 
 from __future__ import annotations
 
@@ -10,6 +7,7 @@ from typing import Any, Dict
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QCheckBox,
     QDoubleSpinBox,
     QFrame,
@@ -26,6 +24,7 @@ class AgentStatusTab(QWidget):
     reload_prompt_clicked = Signal()
     reload_media_clicked = Signal()
     options_changed = Signal(bool, float)
+    v2_settings_changed = Signal(str, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -69,6 +68,24 @@ class AgentStatusTab(QWidget):
         self.apply_btn.clicked.connect(self._emit_options)
         row.addWidget(self.apply_btn)
 
+        row.addWidget(QLabel("运行模式"))
+        self.agent_mode_combo = QComboBox()
+        self.agent_mode_combo.addItem("V2", "v2")
+        self.agent_mode_combo.addItem("Legacy", "legacy")
+        row.addWidget(self.agent_mode_combo)
+
+        row.addWidget(QLabel("V2 KB高置信阈值"))
+        self.v2_kb_conf_spin = QDoubleSpinBox()
+        self.v2_kb_conf_spin.setRange(0.0, 1.0)
+        self.v2_kb_conf_spin.setSingleStep(0.05)
+        self.v2_kb_conf_spin.setValue(0.65)
+        row.addWidget(self.v2_kb_conf_spin)
+
+        self.apply_v2_btn = QPushButton("应用V2参数")
+        self.apply_v2_btn.setObjectName("Secondary")
+        self.apply_v2_btn.clicked.connect(self._emit_v2_settings)
+        row.addWidget(self.apply_v2_btn)
+
         row.addStretch()
         card_layout.addLayout(row)
 
@@ -100,6 +117,18 @@ class AgentStatusTab(QWidget):
 
     def _emit_options(self):
         self.options_changed.emit(self.use_kb_checkbox.isChecked(), float(self.threshold_spin.value()))
+
+    def _emit_v2_settings(self):
+        mode = str(self.agent_mode_combo.currentData() or "legacy")
+        kb_threshold = float(self.v2_kb_conf_spin.value())
+        self.v2_settings_changed.emit(mode, kb_threshold)
+
+    def set_v2_settings(self, mode: str, kb_high_confidence: float):
+        wanted_mode = "v2" if str(mode).strip().lower() == "v2" else "legacy"
+        index = self.agent_mode_combo.findData(wanted_mode)
+        if index >= 0:
+            self.agent_mode_combo.setCurrentIndex(index)
+        self.v2_kb_conf_spin.setValue(max(0.0, min(1.0, float(kb_high_confidence))))
 
     def update_status(self, status: Dict[str, Any]):
         use_kb = bool(status.get("use_knowledge_first", True))

@@ -23,6 +23,9 @@ class ConfigManager(QObject):
             "updated_at": "",
             "current_model": "ChatGPT",
             "agent_mode": "legacy",
+            "v2": {
+                "kb_high_confidence": 0.65
+            },
             "models": {
                 "ChatGPT": {
                     "base_url": "https://api.openai.com/v1",

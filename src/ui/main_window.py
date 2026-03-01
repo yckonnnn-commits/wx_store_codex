@@ -75,6 +75,7 @@ class MainWindow(QWidget):
         self.chat_orchestrator = build_v2_orchestrator(
             knowledge_service=self.knowledge_service,
             llm_service=self.llm_service,
+            kb_high_confidence=float(self.config_manager.get("v2.kb_high_confidence", 0.65) or 0.65),
         )
         self.message_processor = None
 
@@ -159,6 +160,10 @@ class MainWindow(QWidget):
 
         self._update_model_badge()
         self._refresh_agent_tab_status()
+        self.agent_tab.set_v2_settings(
+            mode=str(self.config_manager.get("agent_mode", "legacy")),
+            kb_high_confidence=float(self.config_manager.get("v2.kb_high_confidence", 0.65) or 0.65),
+        )
 
     def _connect_signals(self):
         self.left_panel.start_clicked.connect(self._on_start)
@@ -187,6 +192,7 @@ class MainWindow(QWidget):
         self.agent_tab.reload_prompt_clicked.connect(self._on_reload_agent_prompt)
         self.agent_tab.reload_media_clicked.connect(self._on_reload_agent_media)
         self.agent_tab.options_changed.connect(self._on_agent_options_changed)
+        self.agent_tab.v2_settings_changed.connect(self._on_v2_settings_changed)
 
     def _load_wechat_store(self):
         self.browser_tab.load_url(WECHAT_STORE_URL)
@@ -254,6 +260,24 @@ class MainWindow(QWidget):
         self.agent.set_options(use_knowledge_first=use_kb, knowledge_threshold=threshold)
         self.left_panel.append_log(f"⚙️ Agent参数已更新: use_kb={use_kb}, threshold={threshold:.2f}")
         self._refresh_agent_tab_status()
+
+    def _on_v2_settings_changed(self, mode: str, kb_high_confidence: float):
+        normalized_mode = "v2" if str(mode).strip().lower() == "v2" else "legacy"
+        normalized_kb = max(0.0, min(1.0, float(kb_high_confidence)))
+        self.config_manager.set("agent_mode", normalized_mode)
+        self.config_manager.set("v2.kb_high_confidence", normalized_kb)
+        self.config_manager.save()
+
+        self.chat_orchestrator = build_v2_orchestrator(
+            knowledge_service=self.knowledge_service,
+            llm_service=self.llm_service,
+            kb_high_confidence=normalized_kb,
+        )
+        self.message_processor.set_chat_orchestrator(self.chat_orchestrator)
+        self.message_processor.set_agent_mode(normalized_mode)
+        self.left_panel.append_log(
+            f"⚙️ V2参数已更新: mode={normalized_mode}, kb_high_confidence={normalized_kb:.2f}"
+        )
 
     def _update_model_badge(self):
         self.model_badge.setText(self.config_manager.get_current_model())

@@ -303,19 +303,27 @@ class KnowledgeRepository(QObject):
             if not question:
                 continue
             question_lower = question.lower()
+            question_norm = re.sub(r"[，。！？、,.!?~\s]+", "", question_lower)
 
             for variant in query_variants:
                 if not variant:
                     continue
                 score = 0.0
                 mode = "none"
+                variant_norm = re.sub(r"[，。！？、,.!?~\s]+", "", variant)
 
                 if variant == question_lower:
                     score = 1.0
                     mode = "exact"
+                elif variant_norm and question_norm and variant_norm == question_norm:
+                    score = 1.0
+                    mode = "normalized_exact"
                 elif variant in question_lower or question_lower in variant:
                     score = 0.8
                     mode = "contains"
+                elif variant_norm and question_norm and (variant_norm in question_norm or question_norm in variant_norm):
+                    score = 0.85
+                    mode = "normalized_contains"
                 else:
                     user_words = set(re.findall(r"\w+", variant))
                     question_words = set(re.findall(r"\w+", question_lower))

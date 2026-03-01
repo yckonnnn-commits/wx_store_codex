@@ -100,6 +100,8 @@ class KnowledgeService(QObject):
         "试戴",
     )
     PRICE_KEYWORDS = ("价格", "多少钱", "价位", "报价", "收费", "预算", "贵", "便宜")
+    DELIVERY_TIME_KEYWORDS = ("多久", "几天", "当天", "能做好", "定制周期", "交期", "制作时间")
+    WHITE_HAIR_KEYWORDS = ("白发", "头发白", "白头发")
     WEARING_KEYWORDS = (
         "佩戴", "麻烦", "闷", "热", "自然", "掉", "会掉吗", "材质", "真人发",
         "好打理", "清洗", "梳", "售后", "保养", "透气"
@@ -305,10 +307,16 @@ class KnowledgeService(QObject):
         intents: List[str] = []
         if any(k in text for k in self.PRICE_KEYWORDS):
             intents.append("price")
+        if any(k in text for k in self.DELIVERY_TIME_KEYWORDS):
+            intents.append("delivery_time")
         if self.is_address_query(text):
             intents.append("address")
         if any(k in text for k in self.WEARING_KEYWORDS):
             intents.append("wearing")
+        if any(k in text for k in self.WHITE_HAIR_KEYWORDS):
+            intents.append("wearing")
+        if any(k in text for k in ("头发乱", "乱了", "打结", "炸毛")):
+            intents.extend(["care", "wearing"])
         if not intents:
             intents.append("general")
 

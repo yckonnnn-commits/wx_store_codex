@@ -90,6 +90,12 @@ class MessageProcessor(QObject):
         if not self._poll_inflight:
             self._poll_cycle()
 
+    def set_agent_mode(self, mode: str) -> None:
+        self.agent_mode = "v2" if str(mode or "").strip().lower() == "v2" else "legacy"
+
+    def set_chat_orchestrator(self, chat_orchestrator: Optional[ChatOrchestrator]) -> None:
+        self.chat_orchestrator = chat_orchestrator
+
     def reload_media_config(self):
         """重载 Agent 媒体库索引"""
         self.agent.reload_media_library()

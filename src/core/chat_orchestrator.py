@@ -149,11 +149,16 @@ def build_v2_orchestrator(
     knowledge_service: KnowledgeService,
     llm_service: LLMService,
     max_regenerations: int = 3,
+    kb_high_confidence: float = 0.65,
 ) -> ChatOrchestrator:
     return ChatOrchestrator(
         intent_agent=IntentAgent(),
         followup_policy_agent=FollowupPolicyAgent(),
-        reply_agent=ReplyAgent(knowledge_service=knowledge_service, llm_service=llm_service),
+        reply_agent=ReplyAgent(
+            knowledge_service=knowledge_service,
+            llm_service=llm_service,
+            kb_high_confidence=kb_high_confidence,
+        ),
         reply_style_guard=ReplyStyleGuard(),
         max_regenerations=max_regenerations,
     )
